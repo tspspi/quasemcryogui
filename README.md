@@ -8,7 +8,3 @@ Note that during a single peak scan no operations are triggered and no
 measurements are updated! This only happens in idle periods or in between
 two peak scans!
 
-## Note this project uses ```PySimpleGUI```
-
-Since version 5 PySimpleGUI is a commercial project and requires
-a license

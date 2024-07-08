@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, FigureCanvasAgg
 from matplotlib.figure import Figure
