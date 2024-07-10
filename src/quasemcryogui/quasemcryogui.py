@@ -26,6 +26,7 @@ class CryoGUI:
 
         self._lastnotify = 0
         self._runactive = False
+        self._scaniteration = ""
 
     def run(self):
         self._mqtt = MQTTPublisher(
@@ -39,7 +40,8 @@ class CryoGUI:
                 { 'topic' : 'cryo/temperature/pt1000pcb', 'handler' : [ self._receive_pt1000pcb ] },
                 { 'topic' : 'cryo/valve/n2valve', 'handler' : [ self._receive_n2valveupdate ] },
                 { 'topic' : 'scan/+/start', 'handler' : [ self._receive_scan_start ] },
-                { 'topic' : 'scan/+/done', 'handler' : [ self._receive_scan_done ] }
+                { 'topic' : 'scan/+/done', 'handler' : [ self._receive_scan_done ] },
+                { 'topic' : 'scan/iteration', 'handler' : [ self._receive_scan_iteration ] },
             ]
         )
 
@@ -109,13 +111,19 @@ class CryoGUI:
                     self._window["txtStatus"].Update("Unknown               ")
             else:
                 if self._lastnotify > (time.time() - 5*60):
-                    self._window["txtStatus"].Update("Measuring, slow update")
+                    self._window["txtStatus"].Update(f"Measuring, slow update{self._scaniteration}")
  
     def _receive_scan_start(self, topic, msg):
         self._runactive = True
+        self._scaniteration = ""
 
     def _receive_scan_done(self, topic, msg):
         self._runactive = False
+        self._scaniteration = ""
+
+    def _receive_scan_iteration(self, topic, msg):
+        self._runactive = True
+        self._scaniteration = f" ({msg['i']}/{msg['n']})"
 
     def _receive_pt1000pcb(self, topic, msg):
         self._lastnotify = time.time()
