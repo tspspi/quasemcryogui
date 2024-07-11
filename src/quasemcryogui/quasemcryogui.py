@@ -152,8 +152,9 @@ class CryoGUI:
                 lst = self._lasttempts.tolist()
                 curts = time.time()
                 timedelta = [x - curts if x is not None else None for x in lst ]
-                timedelta = np.asarray(lst)
+                timedelta = np.asarray(timedelta)
                 ax.plot(timedelta, self._lasttemp)
+                ax.set_xlim(right = 0)
                 ax.ticklabel_format(useOffset = False)
                 self._figure_enddraw('temp')
 
