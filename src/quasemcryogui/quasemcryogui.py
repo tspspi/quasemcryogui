@@ -12,8 +12,10 @@ from datetime import datetime
 
 import FreeSimpleGUI as sg
 
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, FigureCanvasAgg
 from matplotlib.figure import Figure
+import numpy as np
 
 class CryoGUI:
     def __init__(self, cfg, logger):
@@ -27,6 +29,25 @@ class CryoGUI:
         self._lastnotify = 0
         self._runactive = False
         self._scaniteration = ""
+
+        self._plotsize = (320*2, 240*2)
+        self._maxlastsamples = 200
+
+        self._updateGraphs = True
+        self._lastgraphupdate = 0
+        self._lasttempts = np.full((360,), None)
+        self._lasttemp = np.full((360,), None)
+
+        if "display" in cfg:
+            if "plotsize" in cfg["display"]:
+                if ("x" in cfg["display"]["plotsize"]) and ("y" in cfg["display"]["plotsize"]):
+                    self._plotsize = (float(cfg["display"]["plotsize"]["x"]), float(cfg["display"]["plotsize"]["x"]))
+            if "temphistorypoints" in cfg["display"]:
+                self._lasttempts = np.full((int(cfg["display"]["temphistorypoints"]),), None)
+                self._lasttemp = np.full((int(cfg["display"]["temphistorypoints"]),), None)
+
+
+
 
     def run(self):
         self._mqtt = MQTTPublisher(
@@ -47,23 +68,28 @@ class CryoGUI:
 
         layout = [
             [
-                sg.TabGroup([[
-                    sg.Tab('Current status', [
-                        [
-                            sg.Column([
-                                [ sg.Text("Current temperature (K):") ],
-                                [ sg.Text("Current temperature (C):") ]
-                            ], scrollable = False),
-                            sg.Column([
-                                [ sg.Text("XXXX.XX", key="txtTemp_K") ],
-                                [ sg.Text("XXXX.XX", key="txtTemp_C") ]
-                            ], scrollable = False)
-                        ]
-                    ]),
-                    sg.Tab('Regulation', [
+                sg.Column([[
+                    sg.TabGroup([[
+                        sg.Tab('Current status', [
+                            [
+                                sg.Column([
+                                    [ sg.Text("Current temperature (K):") ],
+                                    [ sg.Text("Current temperature (C):") ]
+                                ], scrollable = False),
+                                sg.Column([
+                                    [ sg.Text("XXXX.XX", key="txtTemp_K") ],
+                                    [ sg.Text("XXXX.XX", key="txtTemp_C") ]
+                                ], scrollable = False)
+                            ]
+                        ]),
+                        sg.Tab('Regulation', [
 
-                    ])
-                ]]),
+                        ])
+                    ]]),
+                ]], vertical_alignment='t'),
+                sg.Column([
+                    [ sg.Canvas(size=self._plotsize, key='canvTemp') ]
+                ])
             ],
             [
                 sg.Column([
@@ -86,6 +112,11 @@ class CryoGUI:
 
         self._window = sg.Window("QUASEM cryogenic status GUI", layout=layout, finalize=True)
 
+        # Initialize matplot
+
+        self._figures = {
+            'temp' : self._init_figure('canvTemp', "Time [s]", "Temperature [K]", "PCB temperature")
+        }
 
         while True:
             event, value = self._window.read(timeout = 1)
@@ -112,6 +143,79 @@ class CryoGUI:
             else:
                 if self._lastnotify > (time.time() - 5*60):
                     self._window["txtStatus"].Update(f"Measuring, slow update{self._scaniteration}")
+
+            if (self._updateGraphs) or ((time.time() - self._lastgraphupdate) > 10):
+                self._lastgraphupdate = time.time()
+
+                ax = self._figure_begindraw('temp')
+
+                lst = self._lasttempts.tolist()
+                curts = time.time()
+                timedelta = [x - curts if x is not None else None for x in lst ]
+                timedelta = np.asarray(lst)
+                ax.plot(timedelta, self._lasttemp)
+                ax.ticklabel_format(useOffset = False)
+                self._figure_enddraw('temp')
+
+
+    def _init_figure(self, canvasName, xlabel, ylabel, title, grid=True, legend=False):
+        figTemp = Figure()
+        fig = Figure(figsize = ( self._plotsize[0] / figTemp.get_dpi(), self._plotsize[1] / figTemp.get_dpi()) )
+
+        self._figure_colors_fig(fig)
+
+        ax = fig.add_subplot(111)
+
+        self._figure_colors(ax)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+
+        if grid:
+            ax.grid()
+
+        fig_agg = FigureCanvasTkAgg(fig, self._window[canvasName].TKCanvas)
+        fig_agg.draw()
+        fig_agg.get_tk_widget().pack(side='top', fill='both', expand=1)
+        return {
+            'fig' : fig,
+            'axis' : ax,
+            'fig_agg' : fig_agg,
+            'xlabel' : xlabel,
+            'ylabel' : ylabel,
+            'title' : title,
+            'grid' : grid,
+            'legend' : legend
+        }
+
+    def _figure_begindraw(self, name):
+        self._figures[name]['axis'].cla()
+        self._figures[name]['axis'].set_xlabel(self._figures[name]['xlabel'])
+        self._figures[name]['axis'].set_ylabel(self._figures[name]['ylabel'])
+        self._figures[name]['axis'].set_title(self._figures[name]['title'])
+        if self._figures[name]['grid']:
+            self._figures[name]['axis'].grid()
+        self._figure_colors(self._figures[name]['axis'])
+        return self._figures[name]['axis']
+
+    def _figure_enddraw(self, name):
+        if self._figures[name]['legend']:
+            self._figures[name]['axis'].legend()
+        self._figures[name]['fig_agg'].draw()
+
+    def _figure_colors_fig(self, fig):
+        fig.set_facecolor((0,0,0))
+    def _figure_colors(self, ax):
+        ax.set_facecolor((0,0,0))
+        ax.xaxis.label.set_color((0.77, 0.80, 0.92))
+        ax.yaxis.label.set_color((0.77, 0.80, 0.92))
+        ax.title.set_color((0.77, 0.80, 0.92))
+        for spine in [ 'top', 'bottom', 'left', 'right' ]:
+            ax.spines[spine].set_color((0.77,0.80,0.92))
+        for axis in [ 'x', 'y' ]:
+            ax.tick_params(axis = axis, colors = (0.77, 0.80, 0.92))
+ 
  
     def _receive_scan_start(self, topic, msg):
         self._runactive = True
@@ -129,7 +233,12 @@ class CryoGUI:
         self._lastnotify = time.time()
         self._temp_pt1000_pcb = msg['temperature']
         self._temp_pt1000_pcb_c = msg['temperature_C']
-        pass
+
+        self._lasttemp = np.roll(self._lasttemp, -1)
+        self._lasttempts = np.roll(self._lasttempts, -1)
+        self._lasttemp[-1] = msg['temperature']
+        self._lasttempts[-1] = time.time()
+        self._updateGraphs = True
 
     def _receive_n2valveupdate(self, topic, msg):
         if "state" in msg:
